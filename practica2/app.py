@@ -69,8 +69,9 @@ def reservar():
 def pagar():
     titulo = request.form.get('titulo')
     precio = request.form.get('precio')
-    r.setex(f"mando:estado:{titulo}", 86400, "Alquilado")
+    r.setex(f"estado:{titulo}", 86400, "Alquilado")
     flash(f"Pago de ${precio} recibido. '{titulo}' alquilado por 24hs.", "success")
+    print
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
