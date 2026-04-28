@@ -1,0 +1,26 @@
+services:
+  redis-turismo:
+    image: redis:latest
+    container_name: redis-turismo
+    ports:
+      - "6380:6379"
+
+  api-backend:
+    build: ./backend
+    container_name: fastapi-turismo
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis-turismo
+
+  web-frontend:
+    build: ./frontend
+    container_name: streamlit-turismo
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - api-backend
