@@ -1,0 +1,77 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo-airports
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - airports-net
+
+  redis-geo:
+    image: redis:7-alpine
+    container_name: redis-geo
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - airports-net
+
+  redis-pop:
+    image: redis:7-alpine
+    container_name: redis-pop
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    networks:
+      - airports-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend-airports
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - MONGO_DB=airport_db
+      - REDIS_GEO_HOST=redis-geo
+      - REDIS_GEO_PORT=6379
+      - REDIS_POP_HOST=redis-pop
+      - REDIS_POP_PORT=6379
+      - DATA_FILE=/app/data/data_trasport.json
+    volumes:
+      - ../data:/app/data:ro
+    depends_on:
+      - mongo
+      - redis-geo
+      - redis-pop
+    networks:
+      - airports-net
+
+  frontend:
+    image: nginx:alpine
+    container_name: frontend-airports
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - airports-net
+
+volumes:
+  mongo_data:
+
+networks:
+  airports-net:
+    driver: bridge
