@@ -1,11 +1,11 @@
 services:
   mongodb:
     image: mongo:latest
-    container_name: superheroes_mongo
+    container_name: superheroes_mongodb
     ports:
       - "27017:27017"
     volumes:
-      - mongo_data:/data/db
+      - mongodb_data:/data/db
 
   backend:
     build: ./backend
@@ -13,7 +13,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGO_URL=mongodb://mongodb:27017/superheroes_db
+      - MONGO_URL=mongodb://mongodb:27017
     depends_on:
       - mongodb
     volumes:
@@ -25,7 +25,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8000/api
     depends_on:
       - backend
     volumes:
@@ -33,4 +33,4 @@ services:
       - /app/node_modules
 
 volumes:
-  mongo_data:
+  mongodb_data:
