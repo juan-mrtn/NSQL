@@ -142,8 +142,22 @@ async def seed_data(db, redis_geo, redis_pop):
         log.error("No airports parsed – check the data file format.")
         return
 
+    # Deduplicate by iata_faa: keep first occurrence, skip duplicates
+    seen_iata = set()
+    deduplicated = []
+    for airport in airports:
+        iata = airport.get("iata_faa")
+        if iata not in seen_iata:
+            seen_iata.add(iata)
+            deduplicated.append(airport)
+        else:
+            log.debug("Skipping duplicate airport with IATA code: %s", iata)
+    
+    log.info("After deduplication: %d unique airports (removed %d duplicates).", 
+             len(deduplicated), len(airports) - len(deduplicated))
+
     # ---- MongoDB ----
-    result = await db.airports.insert_many(airports)
+    result = await db.airports.insert_many(deduplicated)
     log.info("Inserted %d airports into MongoDB.", len(result.inserted_ids))
 
     # ---- Redis GEO ----
@@ -184,8 +198,8 @@ async def lifespan(app: FastAPI):
     app.state.mongo_client = AsyncIOMotorClient(MONGO_URL)
     app.state.db = app.state.mongo_client[MONGO_DB]
 
-    # Create unique index on iata_faa
-    await app.state.db.airports.create_index("iata_faa", unique=True)
+    # Create unique index on iata_faa (sparse to allow multiple null values)
+    await app.state.db.airports.create_index("iata_faa", unique=True, sparse=True)
 
     log.info("Connecting to Redis GEO …")
     app.state.redis_geo = aioredis.Redis(
