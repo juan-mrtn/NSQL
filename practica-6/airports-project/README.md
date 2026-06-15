@@ -1,115 +1,93 @@
-# ✈ Airport Explorer – TP #6 NSQL
+# 🛫 Airport API & Map Explorer
 
-A full-stack application for exploring airports using **MongoDB**, **Redis GEO**, **Redis Popularity**, **FastAPI**, and **Leaflet.js**, orchestrated with **Docker Compose**.
+## 1. Project Overview
 
----
+This project is a comprehensive full-stack application that demonstrates the powerful integration of multiple NoSQL database paradigms to solve distinct data problems efficiently. 
 
-## Project Structure
+Designed as an academic assignment for NoSQL databases, the system handles airport data using a polyglot persistence architecture:
+- **MongoDB** acts as the primary source of truth, providing robust, persistent document storage for all airport metadata (CRUD operations).
+- **Redis GEO (`redis-geo`)** is an independent Redis instance dedicated exclusively to spatial operations. It leverages Redis's in-memory Geospatial indexes and the `GEORADIUS` command to perform lightning-fast proximity searches.
+- **Redis Popularity (`redis-pop`)** is a second Redis instance focused on high-performance, real-time analytics. It tracks the most frequently accessed airports using Sorted Sets (`ZSET`), allowing the application to instantly retrieve a dynamic popularity ranking using the `ZREVRANGE` command.
 
-```
-airports-project/
-├── docker-compose.yml
-├── data/
-│   └── data_trasport.json        # Airport dataset
-├── backend/
-│   ├── Dockerfile
-│   ├── main.py                   # FastAPI app + seeding logic
-│   └── requirements.txt
-└── frontend/
-    ├── index.html                # Leaflet.js map UI
-    └── nginx.conf                # Nginx reverse proxy config
-```
+## 2. Tech Stack
 
----
+- **Backend:** FastAPI (Python), Uvicorn
+- **Frontend:** React, Vite, Leaflet.js (for map rendering and marker clustering)
+- **Primary Database:** MongoDB (Document Store)
+- **In-Memory Stores:** Redis (Key-Value, Spatial Indexes, Sorted Sets)
+- **Infrastructure:** Docker & Docker Compose
 
-## Prerequisites
+## 3. How to Run the Project
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
-- Git (optional).
+The entire application architecture is containerised. To run the project locally, you only need to have Docker and Docker Compose installed on your system.
 
----
-
-## Quick Start
-
-### 1. Clone / extract the project
+Simply open your terminal in the root directory of the project and run:
 
 ```bash
-cd airports-project
+docker compose up --build
 ```
 
-### 2. Start all services
+**What happens at startup?**
+Upon the initial startup, the backend application triggers an automated seeding process. It reads the provided `airports.json` data file and automatically:
+1. Loads the structural airport documents into **MongoDB**.
+2. Extracts coordinates and populates the **`redis-geo`** instance.
+3. Initializes the **`redis-pop`** instance to prepare for incoming analytics tracking.
 
+## 4. How to Test & Verify (CRITICAL SECTION)
+
+Follow this testing guide to verify that all layers of the NoSQL architecture are functioning and communicating correctly.
+
+### A. Terminal & Database Verification
+
+**1. Monitor Backend Logs**
+Ensure there are no application errors and verify the automated seeding process executed successfully:
 ```bash
-docker-compose up --build
+docker compose logs -f backend
 ```
 
-Docker will:
-- Pull `mongo:7`, `redis:7-alpine`, `nginx:alpine` images.
-- Build the FastAPI backend image.
-- On first run, the backend automatically seeds MongoDB and Redis from `data_trasport.json`.
-
-### 3. Open the application
-
-| Service  | URL                          |
-|----------|------------------------------|
-| Frontend | http://localhost:3000         |
-| Backend API | http://localhost:8000      |
-| API Docs | http://localhost:8000/docs    |
-
----
-
-## API Reference
-
-### CRUD
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/airports` | List all airports |
-| `POST` | `/airports` | Create airport (MongoDB + Redis GEO) |
-| `GET`  | `/airports/{iata}` | Get airport details + **+1 popularity** |
-| `PUT`  | `/airports/{iata}` | Update airport |
-| `DELETE` | `/airports/{iata}` | Delete from MongoDB + Redis GEO + Redis Popularity |
-
-### Geospatial & Popularity
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/airports/nearby?lat=&lng=&radius_km=` | Nearby airports via Redis GEOSEARCH |
-| `GET`  | `/airports/popular?limit=10` | Top airports by visit count (ZREVRANGE) |
-
----
-
-## Manual Data Import (alternative)
-
-If you prefer to import via `mongoimport`:
-
+**2. Verify Redis Popularity State**
+You can access the dedicated popularity container directly to inspect the raw `ZSET` structure in real-time. Open a new terminal and run:
 ```bash
-# Copy file into running mongo container
-docker cp data/data_trasport.json mongo-airports:/tmp/data_trasport.json
+docker exec -it redis-pop redis-cli ZREVRANGE airport_popularity 0 -1 WITHSCORES
+```
+*(This will return the list of airport IATA codes alongside their current visit counts).*
 
-# Import (the file uses newline-delimited JSON objects)
-docker exec -it mongo-airports mongoimport \
-  --db airport_db \
-  --collection airports \
-  --drop \
-  --file /tmp/data_trasport.json
+---
+
+### B. REST API Verification (via Postman/cURL)
+
+You can verify the core business logic by hitting the exposed REST API endpoints (hosted by default at `http://localhost:8000`).
+
+**1. Test General CRUD Operations**
+Fetch the complete list of airports directly from MongoDB:
+```http
+GET http://localhost:8000/airports
+```
+
+**2. Test the Popularity Flow (Redis ZSET)**
+Simulate user visits by repeatedly requesting the details of a specific airport (e.g., Ezeiza International Airport):
+```http
+GET http://localhost:8000/airports/EZE
+```
+After executing this request multiple times, query the popularity endpoint:
+```http
+GET http://localhost:8000/airports/popular
+```
+*Expected Result:* You should see "EZE" elevated to the top of the ranking with the correct hit count. **Note:** This popularity set is configured to automatically expire after 24 hours using the Redis `EXPIRE` command (rolling TTL of 86400 seconds).
+
+**3. Test Geospatial Search (Redis GEO)**
+Verify the `GEORADIUS` implementation by searching for airports within a 50 km radius of Buenos Aires:
+```http
+GET http://localhost:8000/airports/nearby?lat=-34.822&lng=-58.535&radius=50
 ```
 
 ---
 
-## Stopping the project
+### C. Frontend & UX Verification
 
-```bash
-docker-compose down          # stop containers, keep data volumes
-docker-compose down -v       # stop + delete volumes (full reset)
-```
+Finally, test the integration from the end-user perspective using the React interface:
 
----
-
-## Architecture Notes
-
-- **MongoDB** stores all airport documents with a unique index on `iata_faa`.
-- **redis-geo** holds `airports-geo` (a Redis GEO Sorted Set). Used by `GEOSEARCH` for nearby queries.
-- **redis-pop** holds `airport_popularity` (a ZSET scored by visit count). TTL resets to 86 400 s (1 day) on every read or increment.
-- **Backend seeding** runs on startup via FastAPI's `lifespan` hook; it is idempotent — re-running when data already exists is a no-op.
-- **Frontend** proxies all `/api/*` calls through Nginx to the backend, avoiding CORS issues.
+1. **Load the Application:** Open the application in your web browser (e.g., `http://localhost:5173`). Verify that the Leaflet map loads successfully and displays the clustered airport markers across the globe.
+2. **Network Inspection:** Open your Browser Developer Tools and navigate to the **Network** tab.
+3. **Popup Interaction:** Click on any airport marker on the map to open its Popup details. In the Network tab, verify that a background request is fired to `GET /airports/{iata_code}` and returns a `200 OK` status.
+4. **Reactive Analytics:** Immediately after the popup loads, observe the UI's Popularity Ranking widget. Verify that the widget updates reactively, reflecting the new view you just triggered for that specific airport.
