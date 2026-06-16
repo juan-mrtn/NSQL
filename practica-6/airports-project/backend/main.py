@@ -15,6 +15,7 @@ from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import OperationFailure
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -138,16 +139,17 @@ async def seed_data(db, redis_geo, redis_pop):
     airports = parse_newline_json(DATA_FILE)
     log.info("Parsed %d airports from file.", len(airports))
 
-    if not airports:
-        log.error("No airports parsed – check the data file format.")
-        return
-
     # Deduplicate by iata_faa: keep first occurrence, skip duplicates
     seen_iata = set()
     deduplicated = []
     for airport in airports:
         iata = airport.get("iata_faa")
-        if iata not in seen_iata:
+        if not iata:
+            # If no IATA code, ensure key is removed for sparse index and add it
+            if "iata_faa" in airport:
+                del airport["iata_faa"]
+            deduplicated.append(airport)
+        elif iata not in seen_iata:
             seen_iata.add(iata)
             deduplicated.append(airport)
         else:
@@ -199,7 +201,12 @@ async def lifespan(app: FastAPI):
     app.state.db = app.state.mongo_client[MONGO_DB]
 
     # Create unique index on iata_faa (sparse to allow multiple null values)
-    await app.state.db.airports.create_index("iata_faa", unique=True, sparse=True)
+    try:
+        await app.state.db.airports.create_index("iata_faa", unique=True, sparse=True)
+    except OperationFailure as e:
+        log.warning("Index conflict detected for 'iata_faa'. Recreating index... (%s)", e)
+        await app.state.db.airports.drop_index("iata_faa_1")
+        await app.state.db.airports.create_index("iata_faa", unique=True, sparse=True)
 
     log.info("Connecting to Redis GEO …")
     app.state.redis_geo = aioredis.Redis(

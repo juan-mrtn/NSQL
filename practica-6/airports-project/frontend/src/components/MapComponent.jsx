@@ -21,7 +21,17 @@ const createClusterCustomIcon = function (cluster) {
   });
 };
 
-const MapComponent = () => {
+const MapFocus = ({ location }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (location) {
+      map.flyTo(location, 10, { animate: true });
+    }
+  }, [location, map]);
+  return null;
+};
+
+const MapComponent = ({ refreshTrigger, focusLocation }) => {
   const [airports, setAirports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAirport, setSelectedAirport] = useState(null);
@@ -40,12 +50,15 @@ const MapComponent = () => {
       }
     };
     loadAirports();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleMarkerClick = async (iataCode) => {
     // Return early if no code
-    if (!iataCode) return;
-    
+    if (!iataCode) {
+      setSelectedAirport(null);
+      return;
+    }
+
     setSelectedAirport({ loading: true, iataCode });
     try {
       const details = await fetchAirportDetails(iataCode);
@@ -66,9 +79,10 @@ const MapComponent = () => {
 
   return (
     <MapContainer center={position} zoom={zoom} style={{ height: '100%', width: '100%' }}>
+      <MapFocus location={focusLocation} />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        url='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        url='https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
       />
       <MarkerClusterGroup
         chunkedLoading
@@ -76,17 +90,17 @@ const MapComponent = () => {
         maxClusterRadius={80}
       >
         {airports.map((airport) => (
-          <Marker 
-            key={airport.iata_faa || `${airport.lat}-${airport.lng}`} 
+          <Marker
+            key={airport.iata_faa || `${airport.lat}-${airport.lng}`}
             position={[airport.lat, airport.lng]}
             eventHandlers={{
               click: () => handleMarkerClick(airport.iata_faa)
             }}
           >
             <Popup>
-              <AirportPopup 
-                airportData={selectedAirport} 
-                basicData={airport} 
+              <AirportPopup
+                airportData={selectedAirport}
+                basicData={airport}
               />
             </Popup>
           </Marker>

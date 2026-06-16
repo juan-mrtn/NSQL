@@ -1,8 +1,12 @@
 import React from 'react';
 
 const AirportPopup = ({ airportData, basicData }) => {
-  // If data hasn't loaded yet or we clicked another marker quickly
-  if (!airportData || airportData.loading || airportData.iataCode !== basicData.iata_faa) {
+  // If the airport has no IATA code, we cannot fetch popularity updates,
+  // but we can still display the basic data.
+  const hasIata = !!basicData.iata_faa;
+
+  // If it has IATA but data is still loading or doesn't match
+  if (hasIata && (!airportData || airportData.loading || airportData.iataCode !== basicData.iata_faa)) {
     return (
       <div style={{ minWidth: '150px', textAlign: 'center', padding: '10px' }}>
         <h3 style={{ margin: '0 0 10px 0', color: '#4da8da' }}>{basicData.name}</h3>
@@ -11,7 +15,7 @@ const AirportPopup = ({ airportData, basicData }) => {
     );
   }
 
-  if (airportData.error) {
+  if (hasIata && airportData && airportData.error) {
     return (
       <div style={{ minWidth: '150px', padding: '10px' }}>
         <h3 style={{ margin: '0 0 10px 0', color: '#e74c3c' }}>{basicData.name}</h3>
@@ -20,7 +24,8 @@ const AirportPopup = ({ airportData, basicData }) => {
     );
   }
 
-  const { data } = airportData;
+  // Use fetched details if available, otherwise fallback to basicData
+  const data = (hasIata && airportData && airportData.data) ? airportData.data : basicData;
 
   return (
     <div style={{ minWidth: '200px', padding: '5px' }}>
@@ -37,7 +42,11 @@ const AirportPopup = ({ airportData, basicData }) => {
         <strong style={{ color: '#aaa' }}>Timezone:</strong> <span>{data.tz || 'N/A'}</span>
       </div>
       <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #333', fontSize: '12px', color: '#888', textAlign: 'center' }}>
-        <p style={{ margin: 0 }}>Viewing this updates popularity!</p>
+        {hasIata ? (
+          <p style={{ margin: 0 }}>Viewing this updates popularity!</p>
+        ) : (
+          <p style={{ margin: 0, color: '#e74c3c' }}>No IATA code to track popularity.</p>
+        )}
       </div>
     </div>
   );
